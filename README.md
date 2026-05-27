@@ -30,6 +30,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 | Language | Python 3.11+ |
 | Vector DB | [Chroma Cloud](https://trychroma.com) |
 | Semantic cache | [Redis Cloud](https://redis.io/try-free) + OpenAI `text-embedding-3-small` |
+| Observability + Monitoring | [Axiom](https://axiom.co) via OpenTelemetry |
 | Evaluation | RAGAS |
 | LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
 | LLM — medium | Claude Sonnet (primary) → GPT-4o-mini → Gemini 2.5 Flash (fallback) |
@@ -42,6 +43,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - A [Chroma Cloud](https://trychroma.com) account — free tier ($5 credit) is sufficient
 - A [Redis Cloud](https://redis.io/try-free) account — free tier (30 MB, no credit card required) is sufficient
+- An [Axiom](https://axiom.co) account — free tier (500 GB/month, no credit card required) is sufficient
 - API keys: Anthropic, Google, OpenAI
 
 ## Setup
@@ -75,6 +77,12 @@ Fill in `.env` with credentials from each service:
 3. Once the database is active, open it and click **Connect**
 4. Copy **Host**, **Port**, and **Password** into `.env` — `REDIS_USERNAME` is always `default` on the free plan
 
+**Axiom** — available at [axiom.co](https://axiom.co). No credit card required. Steps:
+1. Create a free account
+2. Go to **Datasets** and create a new dataset named `rag-blueprint` (or any name — update `AXIOM_DATASET` accordingly)
+3. Go to **Settings > API Tokens** and generate a new token with ingest + query permissions
+4. Copy the **API Token** and **Dataset** name into `.env`
+
 **API keys** — Anthropic, Google, and OpenAI consoles linked in `.env.example`.
 
 **3. Verify connections**
@@ -85,6 +93,9 @@ uv run python -c "from dotenv import load_dotenv; load_dotenv(); from rag.vector
 
 # Redis Cloud
 uv run python -c "from dotenv import load_dotenv; load_dotenv(); import redis, os; r = redis.Redis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), username=os.getenv('REDIS_USERNAME'), password=os.getenv('REDIS_PASSWORD'), decode_responses=True); print(r.ping())"
+
+# Axiom
+uv run python -c "from dotenv import load_dotenv; load_dotenv(); from axiom import Client; import os; c = Client(os.getenv('AXIOM_API_KEY')); print(c.datasets.get(os.getenv('AXIOM_DATASET')).name)"
 ```
 
 ## Project Structure
