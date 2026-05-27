@@ -158,14 +158,28 @@ Thresholds are configured in `config.yaml` under `evaluation`. The `min_score_th
 
 ## Want to Run Fully Local?
 
-Chroma Cloud is used in this project to keep infrastructure setup out of the way. If you prefer to run everything locally:
+The managed services (Chroma Cloud, Redis Cloud, Axiom) are used to keep infrastructure setup out of the way. Each can be replaced with a local alternative.
 
+**Vector DB — Chroma Cloud → Chroma embedded:**
 1. Replace `CloudClient` with the Chroma embedded client in `src/rag/vector_db/client.py`
 2. Remove the `Schema` (sparse embeddings are a Chroma Cloud feature)
 3. Add your own embedding pipeline (e.g. `text-embedding-3-small`) before `collection.add()`
 4. Implement BM25 + RRF manually for hybrid search
 
 See [ADR-001](docs/adrs/adr-001-vector-db.md) for the full trade-off analysis.
+
+**Semantic Cache — Redis Cloud → Redis via Docker:**
+```bash
+docker run -d -p 6379:6379 redis:7
+```
+Update `.env`: `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_PASSWORD=` (empty).
+
+**Observability — Axiom → Prometheus + Grafana:**
+1. Add a `/metrics` endpoint to expose operational metrics (latency, cost, token usage)
+2. Run Prometheus + Grafana via Docker Compose to scrape and visualize
+3. For RAGAS quality events, emit to structured logs and configure log-based alerts
+
+Note: Prometheus's pull-based model is a less natural fit for discrete quality events than Axiom's event ingestion — see [ADR-010](docs/adrs/adr-010-observability-axiom.md) for the reasoning.
 
 ## License
 
