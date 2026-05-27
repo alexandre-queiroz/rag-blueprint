@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from rag.cache.semantic_cache import SemanticCache
+from rag.classifier.classifier import classify
+from rag.config import Config
+from rag.gateway.gateway import LLMGateway
+from rag.types import ComplexityLabel, RAGResponse
+
+if TYPE_CHECKING:
+    import chromadb
+
+
+class RAGPipeline:
+    """End-to-end serving path orchestrator.
+
+    Wires: classify → cache → vector search → gateway.
+
+    All dependencies are constructor-injected — this class does not
+    instantiate clients or read environment variables directly.
+
+    The chromadb import is deferred to call time (inside query()) so the module
+    can be imported in environments where the Chroma Cloud SDK symbols are not
+    available (e.g., local dev without full Chroma Cloud credentials).
+
+    Usage::
+
+        pipeline = RAGPipeline(
+            config=load_config(),
+            cache=SemanticCache(config.semantic_cache),
+            collection=get_collection(client, config.vector_db.collection),
+            gateway=LLMGateway(config.llm_gateway, config.token_budget, breakers),
+        )
+        response = await pipeline.query("What is RAG?")
+    """
+
+    def __init__(
+        self,
+        config: Config,
+        cache: SemanticCache,
+        collection: chromadb.Collection,
+        gateway: LLMGateway,
+    ) -> None:
+        self._config = config
+        self._cache = cache
+        self._collection = collection
+        self._gateway = gateway
+
+    async def query(self, query: str) -> RAGResponse:
+        """Run a query end-to-end through the serving pipeline.
+
+        Steps:
+        1. Validate and normalize the query — raises ValueError for blank input.
+        2. Classify complexity — heuristics → embedding → LLM.
+        3. Semantic cache check — hit returns immediately, skipping Chroma and LLM.
+        4. Hybrid vector search (Chroma Cloud native RRF).
+        5. LLM Gateway — token budget, model selection, fallback chain, graceful degradation.
+        6. Cache write — fire-and-forget, does not block the returned response.
+
+        Raises:
+            ValueError: if query is blank after stripping whitespace.
+            TokenBudgetExceededError: if the assembled prompt exceeds the configured token limit.
+        """
+        # Deferred import — chromadb Cloud SDK may not be available in all environments
+        from rag.vector_db.client import hybrid_search
+
+        normalized = _validate_query(query)
+
+        # Classify — determines primary model and fallback chain
+        complexity: ComplexityLabel = await classify(normalized, self._config.classifier)
+
+        # Cache check — short-circuit before any vector or LLM call
+        cached = await self._cache.get(normalized)
+        if cached is not None:
+            return cached
+
+        # Hybrid vector search — Chroma SDK is synchronous
+        chunks = hybrid_search(
+            self._collection,
+            normalized,
+            self._config.vector_db.top_k,
+        )
+
+        # LLM Gateway — raises TokenBudgetExceededError if prompt is over budget
+        response = await self._gateway.complete(normalized, chunks, complexity)
+
+        # Write to cache without blocking the caller
+        asyncio.create_task(self._cache.set(normalized, response))
+
+        return response
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _validate_query(query: str) -> str:
+    """Return normalized query or raise ValueError if blank.
+
+    Normalizes by stripping leading/trailing whitespace. Rejects empty
+    or whitespace-only strings before they reach any external service.
+    """
+    normalized = query.strip()
+    if not normalized:
+        raise ValueError("Query must not be empty or whitespace-only")
+    return normalized
