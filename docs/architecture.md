@@ -22,7 +22,26 @@ Steps:
 
 The chunking strategy is the single most impactful decision for retrieval quality. Hierarchical chunking stores a large parent chunk for context and smaller child chunks for precise matching — retrieval finds the child, returns the parent.
 
-**Offline evaluation** (RAGAS) runs after ingestion against a fixed Q&A dataset before any serving starts. See ADR-004.
+#### Parent-Child Denormalization Trade-off
+
+Currently, the system uses a **denormalized storage approach** in Chroma Cloud: the `parent_text` is stored directly inside the metadata of each child chunk.
+
+*   **Pros:**
+    *   **Ultra-low Latency (1 Network Call):** A single search query in Chroma Cloud retrieves the child matches along with their fully populated `parent_text` metadata, requiring exactly one remote HTTP round-trip in the critical serving path.
+    *   **No Unnecessary Vectors:** Storing parents in metadata avoids creating a second vector collection in Chroma. If parents were stored in a separate collection, Chroma Cloud would unnecessarily generate embeddings (Qwen/Splade) and maintain HNSW vector indexes for parent chunks that are never searched semantically.
+    *   **Transactional Simplicity:** Avoiding a secondary collection eliminates synchronization overhead (rollbacks, deletion cascades, and transactional drift) during ingest or purge operations.
+*   **Cons:**
+    *   **Storage Redundancy:** Replicating the parent text across all its children results in a ~4x to 5x increase in text metadata storage footprint. At massive scale (millions of documents), this increases metadata storage costs.
+
+#### Scaling Roadmap (Escalation Path)
+
+If database size or metadata storage costs in Chroma Cloud eventually scale to a point of concern, the escalation path is **not** to normalize into two Chroma collections. Instead, the architecture will evolve as follows:
+1.  **Chroma Cloud (Vectors & IDs only):** Index the child chunks in Chroma Cloud, storing only `parent_id` (and not `parent_text`) in metadata.
+2.  **PostgreSQL/Redis (Normalized Storage):** Store the mapping of `parent_id` to `parent_text` in a relational table (PostgreSQL) or highly optimized in-memory store (Redis), which are already native components of the project's technology stack.
+3.  **In-Memory Resolution:** During retrieval, execute a single query to Chroma Cloud to fetch the best child chunk IDs and `parent_id`s, then run a fast bulk lookup (`SELECT WHERE IN` or Redis MGET) to resolve the parent texts. Since relational/KV storage is significantly cheaper than vector DB metadata memory, this normalizes storage footprint without introducing secondary vector indexing overhead, maintaining sub-millisecond local joins.
+
+
+**Offline evaluation** (RAGAS) runs after ingestion against a fixed Q&A dataset before any serving starts. See ADR-008.
 
 ### 2. API Gateway
 

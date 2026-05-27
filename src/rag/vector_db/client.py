@@ -76,15 +76,32 @@ def hybrid_search(
         Search()
         .rank(rrf)
         .limit(limit)
-        .select(K.DOCUMENT, K.SCORE, "source", "chunk_index")
+        .select(K.DOCUMENT, K.SCORE, "source", "chunk_index", "parent_text", "parent_id")
     )
     raw_results: list[dict[str, object]] = collection.search(search)
-    return [
+
+    chunks = [
         RetrievedChunk(
-            document=str(r.get(K.DOCUMENT, "")),
+            # parent_text takes precedence — LLM receives the larger context window
+            document=str(r["parent_text"]) if r.get("parent_text") else str(r.get(K.DOCUMENT, "")),
             score=float(r.get(K.SCORE, 0.0)),
             source=str(r.get("source", "")),
             chunk_index=int(r.get("chunk_index", 0)),
+            parent_id=str(r["parent_id"]) if r.get("parent_id") else None,
         )
         for r in raw_results
     ]
+
+    # Deduplicate by parent_id — multiple children of the same parent would send
+    # duplicate context to the LLM. Results are already sorted by score descending,
+    # so the first occurrence per parent is the highest-scoring match.
+    seen_parents: set[str] = set()
+    deduped: list[RetrievedChunk] = []
+    for chunk in chunks:
+        if chunk.parent_id is None:
+            deduped.append(chunk)
+        elif chunk.parent_id not in seen_parents:
+            seen_parents.add(chunk.parent_id)
+            deduped.append(chunk)
+
+    return deduped[:limit]

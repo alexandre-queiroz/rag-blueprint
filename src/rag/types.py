@@ -8,10 +8,11 @@ ComplexityLabel = Literal["simple", "medium", "complex"]
 
 @dataclass
 class RetrievedChunk:
-    document: str
+    document: str       # parent text (hierarchical) or chunk text (fixed)
     score: float
     source: str
     chunk_index: int
+    parent_id: str | None = None  # set for hierarchical chunks; used for deduplication
 
 
 @dataclass

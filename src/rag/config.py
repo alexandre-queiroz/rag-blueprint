@@ -75,6 +75,14 @@ class VectorDBConfig:
 
 
 @dataclass(frozen=True)
+class IngestionConfig:
+    strategy: str  # "fixed" | "hierarchical"
+    chunk_size: int        # child chunk size for hierarchical; single chunk size for fixed
+    chunk_overlap: int
+    parent_chunk_size: int  # only used for "hierarchical"
+
+
+@dataclass(frozen=True)
 class EvaluationConfig:
     framework: str
     metrics: tuple[str, ...]
@@ -90,6 +98,7 @@ class Config:
     token_budget: TokenBudgetConfig
     semantic_cache: SemanticCacheConfig
     vector_db: VectorDBConfig
+    ingestion: IngestionConfig
     evaluation: EvaluationConfig
 
 
@@ -157,6 +166,10 @@ def load_config(path: str | None = None) -> Config:
     if not isinstance(vector_db, dict):
         raise TypeError("Expected dictionary for vector_db")
 
+    ingestion = raw["ingestion"]
+    if not isinstance(ingestion, dict):
+        raise TypeError("Expected dictionary for ingestion")
+
     evaluation = raw["evaluation"]
     if not isinstance(evaluation, dict):
         raise TypeError("Expected dictionary for evaluation")
@@ -205,6 +218,12 @@ def load_config(path: str | None = None) -> Config:
             rrf_dense_weight=float(vector_db["rrf_dense_weight"]),
             rrf_sparse_weight=float(vector_db["rrf_sparse_weight"]),
             top_k=int(vector_db["top_k"]),
+        ),
+        ingestion=IngestionConfig(
+            strategy=str(ingestion["strategy"]),
+            chunk_size=int(ingestion["chunk_size"]),
+            chunk_overlap=int(ingestion["chunk_overlap"]),
+            parent_chunk_size=int(ingestion["parent_chunk_size"]),
         ),
         evaluation=EvaluationConfig(
             framework=str(evaluation["framework"]),

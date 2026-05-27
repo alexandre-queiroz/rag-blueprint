@@ -95,6 +95,12 @@ vector_db:
   rrf_sparse_weight: 1.0
   top_k: 10        # chunks returned by hybrid search
 
+ingestion:
+  strategy: hierarchical   # "hierarchical" (parent-child) or "fixed" (sliding window)
+  chunk_size: 400          # child chunk — characters; ~60-80 words, optimized for precise vector matching
+  chunk_overlap: 50        # overlap between children within the same parent
+  parent_chunk_size: 1500  # parent chunk — characters; ~200-250 words, returned to LLM as context
+
 evaluation:
   framework: ragas
   metrics:
