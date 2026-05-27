@@ -12,18 +12,20 @@ from rag.types import ComplexityLabel, RAGResponse
 if TYPE_CHECKING:
     import chromadb
 
+    from rag.monitoring.monitor import RAGASMonitor
+
 
 class RAGPipeline:
     """End-to-end serving path orchestrator.
 
-    Wires: classify → cache → vector search → gateway.
+    Wires: classify → cache → vector search → gateway → (optional) monitor.
 
     All dependencies are constructor-injected — this class does not
     instantiate clients or read environment variables directly.
 
-    The chromadb import is deferred to call time (inside query()) so the module
-    can be imported in environments where the Chroma Cloud SDK symbols are not
-    available (e.g., local dev without full Chroma Cloud credentials).
+    The chromadb and monitoring imports are deferred to call time so the
+    module loads cleanly in environments without the full Chroma Cloud SDK
+    or the eval/monitoring optional dependency groups.
 
     Usage::
 
@@ -32,6 +34,7 @@ class RAGPipeline:
             cache=SemanticCache(config.semantic_cache),
             collection=get_collection(client, config.vector_db.collection),
             gateway=LLMGateway(config.llm_gateway, config.token_budget, breakers),
+            monitor=RAGASMonitor(config.evaluation),  # optional
         )
         response = await pipeline.query("What is RAG?")
     """
@@ -42,11 +45,13 @@ class RAGPipeline:
         cache: SemanticCache,
         collection: chromadb.Collection,
         gateway: LLMGateway,
+        monitor: RAGASMonitor | None = None,
     ) -> None:
         self._config = config
         self._cache = cache
         self._collection = collection
         self._gateway = gateway
+        self._monitor = monitor
 
     async def query(self, query: str) -> RAGResponse:
         """Run a query end-to-end through the serving pipeline.
@@ -58,6 +63,7 @@ class RAGPipeline:
         4. Hybrid vector search (Chroma Cloud native RRF).
         5. LLM Gateway — token budget, model selection, fallback chain, graceful degradation.
         6. Cache write — fire-and-forget, does not block the returned response.
+        7. RAGAS monitor — fire-and-forget if monitor is configured; skipped on cache hits.
 
         Raises:
             ValueError: if query is blank after stripping whitespace.
@@ -86,8 +92,10 @@ class RAGPipeline:
         # LLM Gateway — raises TokenBudgetExceededError if prompt is over budget
         response = await self._gateway.complete(normalized, chunks, complexity)
 
-        # Write to cache without blocking the caller
+        # Fire-and-forget: cache write and RAGAS monitoring do not block the caller
         asyncio.create_task(self._cache.set(normalized, response))
+        if self._monitor is not None:
+            asyncio.create_task(self._monitor.sample(normalized, response, chunks))
 
         return response
 
