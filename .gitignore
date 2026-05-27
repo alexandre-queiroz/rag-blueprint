@@ -1,6 +1,9 @@
 # Environment
 .env
 
+# Personal workflow — not part of the public reference implementation
+AI_USAGE.md
+
 # Python
 __pycache__/
 *.py[cod]
