@@ -1,0 +1,105 @@
+# RAG system configuration
+#
+# NOTE: In production, these values should be managed by a config service
+# (e.g. AWS AppConfig, GCP Feature Flags, LaunchDarkly) to allow runtime
+# changes without redeploy.
+
+llm_gateway:
+  # Primary and fallback selected by complexity — optimizes cost on both the happy path and fallback
+  # See ADR-006 for the routing rationale
+  primary:
+    simple:
+      provider: anthropic
+      model: claude-3-5-haiku-20241022
+      api_key_env: ANTHROPIC_API_KEY
+      timeout_ms: 15000
+      max_retries: 2
+    medium:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      api_key_env: ANTHROPIC_API_KEY
+      timeout_ms: 30000
+      max_retries: 2
+    complex:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      api_key_env: ANTHROPIC_API_KEY
+      timeout_ms: 30000
+      max_retries: 2
+
+  # Complexity-aware fallback — activated when the primary is unavailable
+  fallback:
+    simple:
+      - provider: google
+        model: gemini-2.5-flash-lite
+        api_key_env: GOOGLE_API_KEY
+        timeout_ms: 15000
+        max_retries: 1
+
+    medium:
+      - provider: openai
+        model: gpt-4o-mini
+        api_key_env: OPENAI_API_KEY
+        timeout_ms: 15000
+        max_retries: 2
+      - provider: google
+        model: gemini-2.5-flash
+        api_key_env: GOOGLE_API_KEY
+        timeout_ms: 20000
+        max_retries: 1
+
+    complex:
+      - provider: openai
+        model: gpt-4o
+        api_key_env: OPENAI_API_KEY
+        timeout_ms: 30000
+        max_retries: 2
+      - provider: google
+        model: gemini-2.5-flash
+        api_key_env: GOOGLE_API_KEY
+        timeout_ms: 20000
+        max_retries: 1
+
+# Classifier runs before the gateway — separate budget and provider
+classifier:
+  provider: google
+  model: gemini-2.5-flash-lite
+  api_key_env: GOOGLE_API_KEY
+  max_tokens: 512
+
+circuit_breaker:
+  failure_threshold: 5       # consecutive failures to open the circuit
+  recovery_timeout_ms: 30000 # time until half-open attempt
+  half_open_max_calls: 1     # test calls allowed in half-open state
+
+token_budget:
+  max_tokens_per_request: 4000    # only level implemented — see ADR-009
+  classifier_max_tokens: 512
+  # Escalation: when the system has an auth layer, add hierarchical counters
+  # in Redis (already in the stack) per organization, department, and user — no structural change in the gateway
+
+semantic_cache:
+  provider: redis
+  similarity_threshold: 0.92  # calibrate after observing false positives in production
+  ttl_seconds: 3600
+  embedding_model: text-embedding-3-small
+
+vector_db:
+  provider: chroma-cloud
+  collection: rag-production
+  # Chroma Cloud native embeddings — no external call required
+  dense_embedding_model: chroma-cloud-qwen3-0.6b    # semantic
+  sparse_embedding_model: chroma-cloud-splade-pp-en-v1  # keyword matching
+  # Native hybrid search via RRF — no manual BM25 needed
+  rrf_dense_weight: 2.0
+  rrf_sparse_weight: 1.0
+  top_k: 10        # chunks returned by hybrid search
+
+evaluation:
+  framework: ragas
+  metrics:
+    - faithfulness
+    - answer_relevancy
+    - context_precision
+  min_score_threshold: 0.75  # starting point — calibrate with real traffic data
+  sample_rate: 0.10          # 10% of live traffic sampled for online evaluation

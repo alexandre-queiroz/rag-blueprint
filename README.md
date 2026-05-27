@@ -1,0 +1,161 @@
+# rag-production
+
+A production-grade RAG (Retrieval-Augmented Generation) reference implementation. Covers the full system design — from document ingestion to multi-model fallback — with every architectural decision documented and each layer independently testable.
+
+Built as a learning resource for engineers who want to understand how a RAG system is designed for production, not just how to get one running locally.
+
+---
+
+## Architecture
+
+![Architecture](docs/architecture.png)
+
+> To update the diagram: open [`docs/architecture.excalidraw`](docs/architecture.excalidraw) at [excalidraw.com](https://excalidraw.com) and export as PNG.
+
+| Layer | Responsibility |
+|---|---|
+| **Ingestion** | Chunking + indexing into Chroma Cloud (embeddings handled server-side) |
+| **API Gateway** | Request validation, token budget enforcement per request |
+| **Classifier** | Assigns complexity label (`simple` / `medium` / `complex`) to each query |
+| **Semantic Cache** | Redis-backed similarity cache — hit skips DB search and LLM entirely |
+| **DB Search** | Hybrid search via Chroma Cloud native RRF (Qwen dense + Splade sparse) |
+| **LLM Gateway** | Model selection by complexity tier, fallback orchestration, token accounting |
+| **Circuit Breaker** | Per-provider health tracking — open circuit skips to next provider |
+| **Monitoring** | Async RAGAS sampling on 10% of live traffic + chunk hit rate |
+
+## Tech Stack
+
+| Concern | Choice |
+|---|---|
+| Language | Python 3.11+ |
+| Vector DB | [Chroma Cloud](https://trychroma.com) |
+| Semantic cache | [Redis Cloud](https://redis.io/try-free) + OpenAI `text-embedding-3-small` |
+| Evaluation | RAGAS |
+| LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
+| LLM — medium | Claude Sonnet (primary) → GPT-4o-mini → Gemini 2.5 Flash (fallback) |
+| LLM — complex | Claude Sonnet (primary) → GPT-4o → Gemini 2.5 Flash (fallback) |
+| Classifier | Gemini 2.5 Flash Lite |
+
+## Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- A [Chroma Cloud](https://trychroma.com) account — free tier ($5 credit) is sufficient
+- A [Redis Cloud](https://redis.io/try-free) account — free tier (30 MB, no credit card required) is sufficient
+- API keys: Anthropic, Google, OpenAI
+
+## Setup
+
+**1. Clone and install dependencies**
+
+```bash
+git clone https://github.com/your-username/rag-production
+cd rag-production
+uv sync
+# or: pip install -e .
+```
+
+**2. Configure environment**
+
+```bash
+cp .env.example .env
+```
+
+Fill in `.env` with credentials from each service:
+
+**Chroma Cloud** — available at [trychroma.com](https://trychroma.com). No credit card required for the free tier. Steps:
+1. Create a free account
+2. A default database (`default_database`) is created automatically — or create a new one
+3. Go to **Settings > API Keys** and generate a new API key
+4. Copy the **API Key**, **Tenant**, and **Database** name into `.env`
+
+**Redis Cloud** — available at [redis.io/try-free](https://redis.io/try-free). No credit card required. Steps:
+1. Create a free account
+2. Click **New database** → select the **Free** plan (30 MB)
+3. Once the database is active, open it and click **Connect**
+4. Copy **Host**, **Port**, and **Password** into `.env` — `REDIS_USERNAME` is always `default` on the free plan
+
+**API keys** — Anthropic, Google, and OpenAI consoles linked in `.env.example`.
+
+**3. Verify connections**
+
+```bash
+# Chroma Cloud
+uv run python -c "from dotenv import load_dotenv; load_dotenv(); from rag.vector_db.client import get_client; print(get_client().heartbeat())"
+
+# Redis Cloud
+uv run python -c "from dotenv import load_dotenv; load_dotenv(); import redis, os; r = redis.Redis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), username=os.getenv('REDIS_USERNAME'), password=os.getenv('REDIS_PASSWORD'), decode_responses=True); print(r.ping())"
+```
+
+## Project Structure
+
+```
+rag-production/
+├── src/rag/
+│   ├── ingestion/         # Chunking strategies + Chroma Cloud indexing
+│   ├── classifier/        # Three-stage complexity classification pipeline
+│   ├── cache/             # Semantic cache (Redis + text-embedding-3-small)
+│   ├── gateway/           # LLM Gateway — model selection, fallback, token accounting
+│   ├── circuit_breaker/   # Per-provider circuit breaker (pybreaker)
+│   ├── monitoring/        # Async RAGAS sampling on live traffic
+│   ├── vector_db/         # Chroma Cloud client and hybrid search
+│   ├── config.py          # Typed config loader (reads config.yaml)
+│   └── types.py           # Shared types (ComplexityLabel, RAGResponse, etc.)
+├── docs/
+│   ├── adrs/              # Architecture Decision Records
+│   ├── architecture.md    # Full system design documentation
+│   ├── architecture.png   # Architecture diagram (export from architecture.excalidraw)
+│   └── architecture.excalidraw
+├── config.yaml            # All provider, budget, and cache settings
+├── .env.example           # Required environment variables (copy to .env)
+├── pyproject.toml
+└── CLAUDE.md              # Context for AI coding assistants
+```
+
+## Configuration
+
+All runtime settings live in `config.yaml`: LLM providers and fallback chains per complexity tier, circuit breaker thresholds, token budget, semantic cache, and RAGAS evaluation parameters.
+
+> In production, these values should be managed by a config service (AWS AppConfig, LaunchDarkly, etc.) to allow changes without redeploy. See the note in `config.yaml`.
+
+## Architectural Decisions
+
+Every non-trivial decision has an ADR in [`docs/adrs/`](docs/adrs/). Read them before implementing or changing anything — they document the alternatives considered, the rationale, and the consequences.
+
+| ADR | Decision |
+|---|---|
+| [ADR-001](docs/adrs/adr-001-vector-db.md) | Vector Database — Chroma Cloud |
+| [ADR-002](docs/adrs/adr-002-chroma-cloud-embeddings.md) | Embeddings — Chroma Cloud Native (Qwen + Splade) |
+| [ADR-003](docs/adrs/adr-003-no-framework.md) | Orchestration — No RAG Framework (LangChain / LlamaIndex) |
+| [ADR-004](docs/adrs/adr-004-semantic-cache.md) | Semantic Cache — Redis + `text-embedding-3-small` |
+| [ADR-005](docs/adrs/adr-005-llm-gateway-litellm.md) | LLM Gateway — LiteLLM |
+| [ADR-006](docs/adrs/adr-006-llm-gateway-routing.md) | LLM Gateway — Complexity-Aware Routing |
+| [ADR-007](docs/adrs/adr-007-circuit-breaker-pybreaker.md) | Circuit Breaker — pybreaker |
+| [ADR-008](docs/adrs/adr-008-evaluation.md) | Evaluation Framework — RAGAS |
+| [ADR-009](docs/adrs/adr-009-token-budget.md) | Token Budget — Per Request |
+| [ADR-010](docs/adrs/adr-010-observability-axiom.md) | Observability and Monitoring — Axiom |
+
+## Running Evaluations
+
+RAGAS is used for both offline evaluation (pre-deploy against a fixed dataset) and online sampling (10% of live traffic by default). Install the eval dependencies first:
+
+```bash
+uv sync --extra eval
+```
+
+Thresholds are configured in `config.yaml` under `evaluation`. The `min_score_threshold` default of `0.75` is a starting point — calibrate it with real traffic data.
+
+## Want to Run Fully Local?
+
+Chroma Cloud is used in this project to keep infrastructure setup out of the way. If you prefer to run everything locally:
+
+1. Replace `CloudClient` with the Chroma embedded client in `src/rag/vector_db/client.py`
+2. Remove the `Schema` (sparse embeddings are a Chroma Cloud feature)
+3. Add your own embedding pipeline (e.g. `text-embedding-3-small`) before `collection.add()`
+4. Implement BM25 + RRF manually for hybrid search
+
+See [ADR-001](docs/adrs/adr-001-vector-db.md) for the full trade-off analysis.
+
+## License
+
+MIT

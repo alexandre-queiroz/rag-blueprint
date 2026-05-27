@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.uv/
+*.egg-info/
+dist/
+build/
+
+# Obsidian
+.obsidian/
+
+# macOS
+.DS_Store
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
