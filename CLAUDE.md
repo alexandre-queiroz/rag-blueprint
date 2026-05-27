@@ -27,7 +27,7 @@ Full diagram and layer descriptions: [`docs/architecture.md`](docs/architecture.
 |---|---|
 | Language | Python 3.11+ (strict typing — no `Any`) |
 | Vector DB | Chroma Cloud — embeddings e hybrid search gerenciados server-side, transparentes para a aplicação |
-| Semantic cache | Redis Cloud + `text-embedding-3-small` (OpenAI) |
+| Semantic cache | Redis Cloud + `gemini/gemini-embedding-001` (Google) |
 | Evaluation | RAGAS |
 | LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
 | LLM — medium | Claude Sonnet (primary) → GPT-4o-mini → Gemini 2.5 Flash (fallback) |
@@ -59,7 +59,7 @@ rag-production/
 ├── src/rag/
 │   ├── ingestion/         # Chunking strategies + Chroma Cloud indexing
 │   ├── classifier/        # Three-stage complexity classification pipeline
-│   ├── cache/             # Semantic cache (Redis + text-embedding-3-small)
+│   ├── cache/             # Semantic cache (Redis + gemini/text-embedding-004)
 │   ├── gateway/           # LLM Gateway — model selection, fallback, token accounting
 │   ├── circuit_breaker/   # Per-provider circuit breaker (pybreaker)
 │   ├── monitoring/        # Async RAGAS sampling on live traffic

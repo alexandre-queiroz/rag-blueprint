@@ -12,16 +12,30 @@ import redis.asyncio as aioredis
 from rag.config import SemanticCacheConfig
 from rag.types import ComplexityLabel, RAGResponse
 
-_EMBED_MODEL = "text-embedding-3-small"
 _KEY_PREFIX = "sc:"
+
+# API key env var resolved from the embedding model prefix at call time.
+_EMBED_API_KEY_ENV: dict[str, str] = {
+    "gemini/": "GOOGLE_API_KEY",
+    "google/": "GOOGLE_API_KEY",
+    "openai/": "OPENAI_API_KEY",
+    "text-embedding": "OPENAI_API_KEY",  # OpenAI shorthand (no prefix)
+}
 
 
 def get_redis_client() -> aioredis.Redis:  # type: ignore[type-arg]
-    """Create async Redis client from environment variables."""
+    """Create async Redis client from environment variables.
+
+    If username is 'default', we pass None to use legacy AUTH (no username),
+    as Redis Cloud free-tier databases do not support ACL-style auth.
+    """
+    username = os.environ.get("REDIS_USERNAME", "default")
+    if username == "default" or not username:
+        username = None
     return aioredis.Redis(
         host=os.environ["REDIS_HOST"],
         port=int(os.environ["REDIS_PORT"]),
-        username=os.environ.get("REDIS_USERNAME", "default"),
+        username=username,
         password=os.environ.get("REDIS_PASSWORD", ""),
         decode_responses=True,
     )
@@ -59,7 +73,7 @@ class SemanticCache:
         Embeds the query once, then scans all cached entries to find the best
         cosine similarity match. Returns None on miss.
         """
-        query_vec = await _embed(query)
+        query_vec = await _embed(query, self._config.embedding_model)
 
         best_raw: dict[str, str] | None = None
         best_score = -1.0
@@ -81,7 +95,7 @@ class SemanticCache:
 
     async def set(self, query: str, response: RAGResponse) -> None:
         """Embed the query and store the response in Redis with TTL."""
-        query_vec = await _embed(query)
+        query_vec = await _embed(query, self._config.embedding_model)
         key = f"{_KEY_PREFIX}{_query_key(query)}"
 
         async with self._redis.pipeline(transaction=True) as pipe:
@@ -100,12 +114,20 @@ class SemanticCache:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-async def _embed(text: str) -> list[float]:
-    """Embed a single string using text-embedding-3-small."""
+async def _embed(text: str, model: str) -> list[float]:
+    """Embed a single string using the configured embedding model.
+
+    The API key is resolved from the model prefix via _EMBED_API_KEY_ENV —
+    no hardcoded provider assumption. Supports Google (gemini/) and OpenAI.
+    """
+    api_key_env = next(
+        (env for prefix, env in _EMBED_API_KEY_ENV.items() if model.startswith(prefix)),
+        "OPENAI_API_KEY",
+    )
     response = await litellm.aembedding(
-        model=_EMBED_MODEL,
+        model=model,
         input=[text],
-        api_key=os.environ.get("OPENAI_API_KEY", ""),
+        api_key=os.environ.get(api_key_env, ""),
     )
     return [float(x) for x in response.data[0].embedding]
 
