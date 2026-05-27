@@ -22,6 +22,23 @@ class CircuitBreakerRegistry:
     The `half_open_max_calls` config field documents the intended value but
     pybreaker does not expose this as a constructor parameter in v1.x.
 
+    KNOWN LIMITATION — in-memory state in multi-instance deployments:
+        Breaker state (open/closed/half-open) is stored in each process's memory.
+        In a horizontally scaled deployment (multiple pods, Lambda cold starts, etc.)
+        each instance maintains its own independent state. A provider can be Open in
+        one instance and Closed in another simultaneously — the system never reaches
+        a coherent view of provider health across the fleet.
+
+        Practical consequence: the circuit never truly "opens" at the fleet level.
+        If a provider is failing, each instance will absorb its own `failure_threshold`
+        errors before opening locally — multiplied by the number of instances.
+
+        Escalation path: store breaker state in Redis (already in the stack).
+        Replace pybreaker's in-memory counters with atomic Redis increments
+        (`INCR`, `EXPIRE`) and a state key per provider. A single Redis write
+        propagates the state change to all instances within the next request cycle.
+        The interface (`is_available`, `get`, `state`) remains unchanged.
+
     Gateway usage:
         breaker = registry.get(provider)
         try:

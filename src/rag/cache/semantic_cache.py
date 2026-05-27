@@ -37,9 +37,16 @@ class SemanticCache:
     Storage layout per entry (Redis hash):
         sc:{query_hash} → { query, embedding (JSON), response (JSON) }
 
-    NOTE: lookup is O(n) via SCAN — acceptable for POC scale. Escalation path for
-    production: Redis Search vector index (RediSearch), which provides sub-linear
-    approximate nearest-neighbor lookup without structural changes to the interface.
+    KNOWN LIMITATION — O(n) latency under load:
+        Each `get()` call does a full SCAN of all cache keys via the network and
+        embeds each stored vector into memory for comparison. At low entry counts
+        (< ~10k) this is imperceptible. At scale, SCAN latency grows linearly with
+        the number of cached entries, adding dozens of ms per request.
+
+        Escalation path (no interface change required):
+        Enable RediSearch and create a vector index on the `embedding` field.
+        Replace the SCAN loop with a single `FT.SEARCH … KNN` query — O(log n)
+        approximate nearest-neighbour, single round-trip, native to Redis Stack.
     """
 
     def __init__(self, client: aioredis.Redis, config: SemanticCacheConfig) -> None:  # type: ignore[type-arg]
