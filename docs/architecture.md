@@ -116,6 +116,56 @@ Circuit breakers are provider-scoped, not model-scoped. A provider flagged as op
 5. **RAGAS evaluation is async in production.** It must not block the response to the caller.
 6. **Chroma Cloud handles all vector DB embeddings.** No external embedding API is called in the ingestion or search path. `text-embedding-3-small` is used only by the semantic cache (Redis).
 
+## Known Limitations & Escalation Paths
+
+These trade-offs are accepted for the current POC scope. Each has a documented escalation path that requires no structural change to the interface it affects.
+
+### 1. Gateway — silent provider failures (observability)
+
+**Location:** `src/rag/gateway/gateway.py` — `LLMGateway.complete()`
+
+**Issue:** The original `except Exception: continue` pattern swallowed all provider error information, making it impossible to distinguish a network timeout from an invalid API key from a model overload in logs or traces.
+
+**Fix applied:** Exceptions are now logged at `WARNING` level with provider name, model, exception type, and full traceback before the fallback chain continues. The behavior (try next provider) is unchanged.
+
+**Residual gap:** The log event is unstructured `stderr` — invisible in Axiom until the OpenTelemetry integration described in ADR-010 is wired up. Until then, errors are observable locally but not queryable in production dashboards.
+
+---
+
+### 2. Semantic Cache — O(n) lookup latency
+
+**Location:** `src/rag/cache/semantic_cache.py` — `SemanticCache.get()`
+
+**Issue:** Every cache lookup performs a full Redis SCAN of all `sc:*` keys followed by a cosine similarity comparison in Python. Round-trip count and Python-side compute grow linearly with the number of cached entries.
+
+**Acceptable at POC scale:** below ~10 000 entries, SCAN completes in < 5 ms. Beyond that, added latency degrades the serving path.
+
+**Escalation path:** Enable RediSearch and create a vector index on the `embedding` field. Replace the SCAN loop with a single `FT.SEARCH … KNN` query — O(log n) approximate nearest-neighbour, one network round-trip. The `SemanticCache` interface (`get`/`set`) remains unchanged.
+
+---
+
+### 3. Pipeline — fire-and-forget task lifetime in serverless
+
+**Location:** `src/rag/serve/pipeline.py` — `RAGPipeline.query()`
+
+**Issue:** `asyncio.create_task()` schedules cache writes and RAGAS monitor calls after the response is returned. In long-lived processes (uvicorn, gunicorn) the event loop continues running after the handler returns, so tasks complete normally. In ephemeral environments (AWS Lambda, Cloud Run scale-to-zero, Vercel) the process may be frozen or terminated before background tasks finish, causing silent cache misses and lost monitoring events.
+
+**Escalation path:** Replace `create_task()` with a synchronous write to a durable queue (Redis Streams, SQS, Cloud Tasks). The queue write adds < 2 ms to the request; a separate worker process drains the queue and performs cache writes and RAGAS evaluations outside the request lifecycle.
+
+---
+
+### 4. Circuit Breaker — in-memory state, no fleet-wide coordination
+
+**Location:** `src/rag/circuit_breaker/breaker.py` — `CircuitBreakerRegistry`
+
+**Issue:** Breaker state (open / closed / half-open) is stored per-process. In a horizontally scaled deployment each instance maintains independent state — a provider can be Open in one pod and Closed in another simultaneously. The effective failure threshold before a provider is blocked fleet-wide is `failure_threshold × instance_count`, not `failure_threshold`.
+
+**Acceptable at POC scale:** single-process deployment has no fleet coordination problem.
+
+**Escalation path:** Store breaker counters and state in Redis (already in the stack) using atomic `INCR` and `EXPIRE` commands. A state change in any instance propagates to all others within the next request cycle. The `CircuitBreakerRegistry` interface (`is_available`, `get`, `state`) remains unchanged — only the storage backend changes.
+
+---
+
 ## ADR Index
 
 | ADR | Decision |

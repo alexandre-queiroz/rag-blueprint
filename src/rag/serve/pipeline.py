@@ -92,7 +92,21 @@ class RAGPipeline:
         # LLM Gateway — raises TokenBudgetExceededError if prompt is over budget
         response = await self._gateway.complete(normalized, chunks, complexity)
 
-        # Fire-and-forget: cache write and RAGAS monitoring do not block the caller
+        # Fire-and-forget: cache write and RAGAS monitoring do not block the caller.
+        #
+        # KNOWN LIMITATION — task lifecycle in serverless/ephemeral environments:
+        #   asyncio.create_task() schedules work on the running event loop, but the
+        #   task is NOT awaited before the response is returned. In long-lived servers
+        #   (uvicorn, gunicorn) this is fine — the loop continues running after the
+        #   request handler returns. In ephemeral environments (AWS Lambda, Vercel,
+        #   Cloud Run with --max-instances=1 scale-to-zero) the process may be frozen
+        #   or terminated before the background task completes, causing silent cache
+        #   misses and lost monitoring events.
+        #
+        #   Escalation path: replace create_task() with a durable background queue
+        #   (Redis Streams, SQS, Cloud Tasks). The queue write is synchronous and
+        #   cheap; a separate worker process consumes the queue and performs cache
+        #   writes and RAGAS evaluations outside the request lifecycle.
         asyncio.create_task(self._cache.set(normalized, response))
         if self._monitor is not None:
             asyncio.create_task(self._monitor.sample(normalized, response, chunks))

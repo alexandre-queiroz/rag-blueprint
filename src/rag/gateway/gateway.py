@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import cast
 
 import litellm
 import pybreaker
+
+_logger = logging.getLogger(__name__)
 
 from rag.circuit_breaker.breaker import CircuitBreakerRegistry
 from rag.config import LLMGatewayConfig, ProviderConfig, TokenBudgetConfig
@@ -115,10 +118,22 @@ class LLMGateway:
                 )
 
             except pybreaker.CircuitBreakerError:
-                continue  # circuit open — skip to next provider
+                _logger.debug("circuit open for provider %s — skipping", provider.provider)
+                continue
 
-            except Exception:
-                continue  # call failed — pybreaker already recorded the failure
+            except Exception as exc:
+                # Log at WARNING so the failure is visible in any log aggregator
+                # without stopping the fallback chain. pybreaker records the
+                # failure on its end; we record the context here.
+                _logger.warning(
+                    "provider %s model %s failed: %s: %s",
+                    provider.provider,
+                    model,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
+                continue
 
         return _degradation_response(complexity)
 
