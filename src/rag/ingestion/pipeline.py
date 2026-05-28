@@ -68,7 +68,7 @@ def _ingest_flat(
     metadatas: list[dict[str, str | int]] = [
         {"source": source, "chunk_index": i} for i in range(len(chunks))
     ]
-    collection.add(documents=chunks, ids=ids, metadatas=metadatas)
+    collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
     return len(chunks)
 
 
