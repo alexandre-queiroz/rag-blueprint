@@ -86,15 +86,21 @@ def ingested_collection(test_collection, config):  # type: ignore[return]
 
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
+# As Redis uses asyncio, these fixtures must be function-scoped to prevent
+# "Event loop is closed" errors caused by pytest-asyncio recreating the loop
+# for each test function.
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def redis_client():  # type: ignore[return]
     import redis.asyncio as aioredis
+    username = os.environ.get("REDIS_USERNAME", "default")
+    if username == "default" or not username:
+        username = None
     client: aioredis.Redis = aioredis.Redis(  # type: ignore[type-arg]
         host=os.environ["REDIS_HOST"],
         port=int(os.environ["REDIS_PORT"]),
-        username=os.environ.get("REDIS_USERNAME", "default"),
+        username=username,
         password=os.environ.get("REDIS_PASSWORD", ""),
         decode_responses=True,
     )
@@ -102,7 +108,7 @@ async def redis_client():  # type: ignore[return]
     await client.aclose()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def cache(redis_client, config):  # type: ignore[return]
     from rag.cache.semantic_cache import SemanticCache
     return SemanticCache(redis_client, config.semantic_cache)
@@ -141,7 +147,7 @@ def gateway(config, circuit_breakers):  # type: ignore[return]
 # ── RAGPipeline ───────────────────────────────────────────────────────────────
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def pipeline(config, cache, ingested_collection, gateway):  # type: ignore[return]
     from rag.serve.pipeline import RAGPipeline
     return RAGPipeline(

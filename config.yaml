@@ -82,7 +82,7 @@ semantic_cache:
   provider: redis
   similarity_threshold: 0.92  # calibrate after observing false positives in production
   ttl_seconds: 3600
-  embedding_model: text-embedding-3-small
+  embedding_model: gemini/gemini-embedding-001
 
 vector_db:
   provider: chroma-cloud

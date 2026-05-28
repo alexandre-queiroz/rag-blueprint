@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from typing import cast
 
 import litellm
@@ -99,14 +100,14 @@ class LLMGateway:
             started_at = time.monotonic()
 
             try:
-                response = await breaker.call_async(
-                    litellm.acompletion,
-                    model=model,
-                    messages=messages,
-                    timeout=provider.timeout_ms / 1000,
-                    num_retries=provider.max_retries,
-                    api_key=os.environ.get(provider.api_key_env, ""),
-                )
+                with breaker.calling():
+                    response = await litellm.acompletion(
+                        model=model,
+                        messages=messages,
+                        timeout=provider.timeout_ms / 1000,
+                        num_retries=provider.max_retries,
+                        api_key=os.environ.get(provider.api_key_env, ""),
+                    )
                 latency_ms = (time.monotonic() - started_at) * 1000
 
                 return RAGResponse(
