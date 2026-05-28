@@ -33,7 +33,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 | Observability + Monitoring | [Axiom](https://axiom.co) via OpenTelemetry |
 | Evaluation | RAGAS |
 | LLM — simple | Gemini 2.5 Flash Lite (primary) → Claude Haiku (fallback) |
-| LLM — medium | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
+| LLM — medium | Gemini 2.5 Flash Lite (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
 | LLM — complex | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o (fallback) |
 | Classifier | Gemini 2.5 Flash Lite |
 

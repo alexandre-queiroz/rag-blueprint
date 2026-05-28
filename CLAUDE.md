@@ -30,7 +30,7 @@ Full diagram and layer descriptions: [`docs/architecture.md`](docs/architecture.
 | Semantic cache | Redis Cloud + `gemini/gemini-embedding-001` (Google) |
 | Evaluation | RAGAS |
 | LLM — simple | Gemini 2.5 Flash Lite (primary) → Claude Haiku (fallback) |
-| LLM — medium | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
+| LLM — medium | Gemini 2.5 Flash Lite (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
 | LLM — complex | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o (fallback) |
 | Classifier LLM | Gemini 2.5 Flash Lite |
 

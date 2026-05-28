@@ -32,7 +32,7 @@ The question is where this data should go and whether observability and monitori
 
 Use **Axiom** as the single destination for both observability events and monitoring data, instrumented via **OpenTelemetry**.
 
-All structured events (operational and quality) are sent to Axiom as JSON via the `axiom-py` SDK. OpenTelemetry provides the instrumentation layer for traces and metrics, with Axiom as the exporter.
+All structured events (operational and quality) are sent to Axiom via the **OTLP HTTP exporter** (`opentelemetry-exporter-otlp-proto-http`) pointed at `https://api.axiom.co/v1/traces`. No Axiom-specific SDK is used — Axiom accepts standard OTLP natively, so the exporter is provider-agnostic.
 
 ```
 OpenTelemetry SDK
@@ -112,7 +112,7 @@ Emit structured JSON logs to stdout and let the deployment infrastructure handle
 - Axiom as a vendor introduces a dependency — if it becomes unavailable, observability stops until the exporter is reconfigured
 
 **Required actions:**
-- `axiom-py` and `opentelemetry-sdk` added to `pyproject.toml`
+- `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` added to `pyproject.toml` under the `monitoring` extra
 - `AXIOM_API_KEY` and `AXIOM_DATASET` added to `.env.example`
 - LLM Gateway and monitoring layer emit structured events to Axiom on every request and every RAGAS evaluation
 - Circuit breaker listeners emit state change events to Axiom
