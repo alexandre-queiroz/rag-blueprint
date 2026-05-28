@@ -29,7 +29,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 |---|---|
 | Language | Python 3.11+ |
 | Vector DB | [Chroma Cloud](https://trychroma.com) |
-| Semantic cache | [Redis Cloud](https://redis.io/try-free) + OpenAI `text-embedding-3-small` |
+| Semantic cache | [Redis Cloud](https://redis.io/try-free) + Google `gemini-embedding-001` |
 | Observability + Monitoring | [Axiom](https://axiom.co) via OpenTelemetry |
 | Evaluation | RAGAS |
 | LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
@@ -44,7 +44,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 - A [Chroma Cloud](https://trychroma.com) account — free tier ($5 credit) is sufficient
 - A [Redis Cloud](https://redis.io/try-free) account — free tier (30 MB, no credit card required) is sufficient
 - An [Axiom](https://axiom.co) account — free tier (500 GB/month, no credit card required) is sufficient
-- API keys: Anthropic, Google, OpenAI
+- API keys: Anthropic and Google (required); OpenAI (optional — only needed for the medium/complex fallback chain)
 
 ## Setup
 
@@ -92,10 +92,60 @@ Fill in `.env` with credentials from each service:
 uv run python -c "from dotenv import load_dotenv; load_dotenv(); from rag.vector_db.client import get_client; print(get_client().heartbeat())"
 
 # Redis Cloud
-uv run python -c "from dotenv import load_dotenv; load_dotenv(); import redis, os; r = redis.Redis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), username=os.getenv('REDIS_USERNAME'), password=os.getenv('REDIS_PASSWORD'), decode_responses=True); print(r.ping())"
+uv run python -c "from dotenv import load_dotenv; load_dotenv(); import redis, os; r = redis.Redis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), password=os.getenv('REDIS_PASSWORD'), decode_responses=True); print(r.ping())"
 
 # Axiom
 uv run python -c "from dotenv import load_dotenv; load_dotenv(); from axiom import Client; import os; c = Client(os.getenv('AXIOM_API_KEY')); print(c.datasets.get(os.getenv('AXIOM_DATASET')).name)"
+```
+
+## Running the Pipeline
+
+You can run the document Ingestion and query the RAG serving pipeline end-to-end directly from your CLI.
+
+### 1. Ingest Documentation
+
+The offline ingestion script reads documentation files from `docs/` and indexes them into Chroma Cloud using a robust parent-child chunking strategy (see ADR-002):
+
+```bash
+uv run python ingest_docs.py
+```
+
+### 2. Query the Pipeline
+
+Use the interactive CLI `query.py` to send queries to the full RAG serving path:
+
+```bash
+# Query as a CLI argument
+uv run python query.py "What is the token budget per request?"
+
+# Or start in interactive mode (Ctrl+D to exit)
+uv run python query.py
+```
+
+#### Cache Miss Example (First Call)
+On the first call, the query misses the cache. The pipeline runs hybrid search (dense Qwen + sparse Splade), routes the request to the correct LLM provider (Anthropic or Google Gemini fallback), prints the response, and starts an async task to write the result to the semantic cache:
+
+```text
+ Query: What is the token budget per request?
+
+ Answer:
+The token budget per request is defined by `max_tokens_per_request`.
+
+ Sources: adr-009-token-budget.md, architecture.md, adr-005-llm-gateway-litellm.md
+ Complexity: simple
+ Model: gemini/gemini-2.5-flash-lite  |  tokens: 2411  |  $0.00025  |  799ms
+```
+
+#### Cache Hit Example (Subsequent Call)
+On a subsequent identical (or semantically similar) query, the Redis semantic cache hits immediately, skipping vector database lookup and external LLM calls entirely for near-zero latency:
+
+```text
+ Query: What is the token budget per request?
+
+ Answer:
+The token budget per request is defined by `max_tokens_per_request`.
+
+ [cache hit]
 ```
 
 ## Project Structure
@@ -105,7 +155,7 @@ rag-production/
 ├── src/rag/
 │   ├── ingestion/         # Chunking strategies + Chroma Cloud indexing
 │   ├── classifier/        # Three-stage complexity classification pipeline
-│   ├── cache/             # Semantic cache (Redis + text-embedding-3-small)
+│   ├── cache/             # Semantic cache (Redis + gemini-embedding-001)
 │   ├── gateway/           # LLM Gateway — model selection, fallback, token accounting
 │   ├── circuit_breaker/   # Per-provider circuit breaker (pybreaker)
 │   ├── monitoring/        # Async RAGAS sampling on live traffic
@@ -138,7 +188,7 @@ Every non-trivial decision has an ADR in [`docs/adrs/`](docs/adrs/). Read them b
 | [ADR-001](docs/adrs/adr-001-vector-db.md) | Vector Database — Chroma Cloud |
 | [ADR-002](docs/adrs/adr-002-chroma-cloud-embeddings.md) | Embeddings — Chroma Cloud Native (Qwen + Splade) |
 | [ADR-003](docs/adrs/adr-003-no-framework.md) | Orchestration — No RAG Framework (LangChain / LlamaIndex) |
-| [ADR-004](docs/adrs/adr-004-semantic-cache.md) | Semantic Cache — Redis + `text-embedding-3-small` |
+| [ADR-004](docs/adrs/adr-004-semantic-cache.md) | Semantic Cache — Redis + Google embedding |
 | [ADR-005](docs/adrs/adr-005-llm-gateway-litellm.md) | LLM Gateway — LiteLLM |
 | [ADR-006](docs/adrs/adr-006-llm-gateway-routing.md) | LLM Gateway — Complexity-Aware Routing |
 | [ADR-007](docs/adrs/adr-007-circuit-breaker-pybreaker.md) | Circuit Breaker — pybreaker |
@@ -174,12 +224,11 @@ docker run -d -p 6379:6379 redis:7
 ```
 Update `.env`: `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_PASSWORD=` (empty).
 
-**Observability — Axiom → Prometheus + Grafana:**
-1. Add a `/metrics` endpoint to expose operational metrics (latency, cost, token usage)
-2. Run Prometheus + Grafana via Docker Compose to scrape and visualize
-3. For RAGAS quality events, emit to structured logs and configure log-based alerts
+**Observability — Axiom → structured logs:**
 
-Note: Prometheus's pull-based model is a less natural fit for discrete quality events than Axiom's event ingestion — see [ADR-010](docs/adrs/adr-010-observability-axiom.md) for the reasoning.
+Remove the Axiom emit in `src/rag/monitoring/monitor.py` (`_emit_to_axiom`) and replace it with a `logging.getLogger(__name__).info(event)` call. RAGAS scores and alerts will appear in stderr/stdout and can be ingested by any log aggregator (Datadog, Loki, CloudWatch).
+
+For infrastructure metrics (latency, cost, token usage), expose a `/metrics` endpoint and scrape with Prometheus + Grafana. Note that Prometheus's pull model is a less natural fit for discrete per-request quality events than Axiom's push ingestion — see [ADR-010](docs/adrs/adr-010-observability-axiom.md) for the trade-off analysis.
 
 ## License
 
