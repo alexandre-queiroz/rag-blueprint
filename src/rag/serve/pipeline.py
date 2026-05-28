@@ -52,6 +52,7 @@ class RAGPipeline:
         self._collection = collection
         self._gateway = gateway
         self._monitor = monitor
+        self.background_tasks: list[asyncio.Task[object]] = []
 
     async def query(self, query: str) -> RAGResponse:
         """Run a query end-to-end through the serving pipeline.
@@ -107,9 +108,11 @@ class RAGPipeline:
         #   (Redis Streams, SQS, Cloud Tasks). The queue write is synchronous and
         #   cheap; a separate worker process consumes the queue and performs cache
         #   writes and RAGAS evaluations outside the request lifecycle.
-        asyncio.create_task(self._cache.set(normalized, response))
+        cache_task = asyncio.create_task(self._cache.set(normalized, response))
+        self.background_tasks.append(cache_task)
         if self._monitor is not None:
-            asyncio.create_task(self._monitor.sample(normalized, response, chunks))
+            monitor_task = asyncio.create_task(self._monitor.sample(normalized, response, chunks))
+            self.background_tasks.append(monitor_task)
 
         return response
 

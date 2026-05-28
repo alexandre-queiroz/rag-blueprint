@@ -94,8 +94,21 @@ uv run python -c "from dotenv import load_dotenv; load_dotenv(); from rag.vector
 # Redis Cloud
 uv run python -c "from dotenv import load_dotenv; load_dotenv(); import redis, os; r = redis.Redis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), password=os.getenv('REDIS_PASSWORD'), decode_responses=True); print(r.ping())"
 
-# Axiom
-uv run python -c "from dotenv import load_dotenv; load_dotenv(); from axiom import Client; import os; c = Client(os.getenv('AXIOM_API_KEY')); print(c.datasets.get(os.getenv('AXIOM_DATASET')).name)"
+# Axiom (sends a test span via OTLP — check your dataset for a 'connectivity-check' span)
+uv run python -c "
+from dotenv import load_dotenv; load_dotenv()
+import os
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+e = OTLPSpanExporter(endpoint='https://api.axiom.co/v1/traces', headers={'Authorization': f'Bearer {os.getenv(\"AXIOM_API_KEY\")}', 'X-Axiom-Dataset': os.getenv('AXIOM_DATASET')})
+p = TracerProvider(resource=Resource.create({'service.name': 'rag-production'}))
+p.add_span_processor(SimpleSpanProcessor(e))
+with p.get_tracer('verify').start_as_current_span('connectivity-check'): pass
+p.shutdown()
+print('Axiom OK')
+"
 ```
 
 ## Running the Pipeline
@@ -201,10 +214,39 @@ Every non-trivial decision has an ADR in [`docs/adrs/`](docs/adrs/). Read them b
 RAGAS is used for both offline evaluation (pre-deploy against a fixed dataset) and online sampling (10% of live traffic by default). Install the eval dependencies first:
 
 ```bash
-uv sync --extra eval
+uv sync --extra eval --extra monitoring
 ```
 
 Thresholds are configured in `config.yaml` under `evaluation`. The `min_score_threshold` default of `0.75` is a starting point — calibrate it with real traffic data.
+
+Each sampled request produces one `ragas.evaluation` span in Axiom with quality scores and full operational metadata:
+
+```json
+{
+  "name": "ragas.evaluation",
+  "scope": { "name": "rag.monitor" },
+  "service": { "name": "rag-production" },
+  "attributes": {
+    "custom": {
+      "rag.query": "What are the consequences of opening the circuit breaker?",
+      "rag.complexity": "simple",
+      "rag.cached": false,
+      "rag.faithfulness": 1.0,
+      "rag.answer_relevancy": 0.796,
+      "rag.context_precision": 0.95,
+      "rag.alert": false,
+      "rag.below_threshold": "",
+      "rag.model": "gemini/gemini-2.5-flash-lite",
+      "rag.provider": "google",
+      "rag.total_tokens": 2079,
+      "rag.cost_usd": 0.0002157,
+      "rag.latency_ms": 822.17
+    }
+  }
+}
+```
+
+`rag.alert: true` fires when any metric drops below `min_score_threshold` — use it to build an Axiom monitor or alert rule.
 
 ## Want to Run Fully Local?
 

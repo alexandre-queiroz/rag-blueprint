@@ -16,8 +16,15 @@ from rag.types import ComplexityLabel
 _SIMILARITY_THRESHOLD = 0.82
 
 # Embedding model used for stage 2 — same as the semantic cache for consistency.
-# Reads OPENAI_API_KEY from env at call time.
-_EMBED_MODEL = "text-embedding-3-small"
+# Reads GOOGLE_API_KEY or OPENAI_API_KEY from env at call time based on model prefix.
+_EMBED_MODEL = "gemini/gemini-embedding-001"
+
+_EMBED_API_KEY_ENV: dict[str, str] = {
+    "gemini/": "GOOGLE_API_KEY",
+    "google/": "GOOGLE_API_KEY",
+    "openai/": "OPENAI_API_KEY",
+    "text-embedding": "OPENAI_API_KEY",
+}
 
 # Canonical labeled queries that anchor the embedding similarity space.
 # These are embedded once on first use and cached in memory.
@@ -146,10 +153,14 @@ async def _build_canonical_embeddings() -> dict[ComplexityLabel, list[list[float
             labels.append(label)
             texts.append(text)
 
+    api_key_env = next(
+        (env for prefix, env in _EMBED_API_KEY_ENV.items() if _EMBED_MODEL.startswith(prefix)),
+        "OPENAI_API_KEY",
+    )
     response = await litellm.aembedding(
         model=_EMBED_MODEL,
         input=texts,
-        api_key=os.environ.get("OPENAI_API_KEY", ""),
+        api_key=os.environ.get(api_key_env, ""),
     )
 
     result: dict[ComplexityLabel, list[list[float]]] = {
@@ -165,10 +176,14 @@ async def _build_canonical_embeddings() -> dict[ComplexityLabel, list[list[float
 
 async def _embed(text: str) -> list[float]:
     """Embed a single string using the stage-2 embedding model."""
+    api_key_env = next(
+        (env for prefix, env in _EMBED_API_KEY_ENV.items() if _EMBED_MODEL.startswith(prefix)),
+        "OPENAI_API_KEY",
+    )
     response = await litellm.aembedding(
         model=_EMBED_MODEL,
         input=[text],
-        api_key=os.environ.get("OPENAI_API_KEY", ""),
+        api_key=os.environ.get(api_key_env, ""),
     )
     return [float(x) for x in response.data[0].embedding]
 

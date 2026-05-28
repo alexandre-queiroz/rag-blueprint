@@ -86,3 +86,15 @@ Use LangChain to connect Classifier → DB Search → LLM Gateway via chains and
 **Triggers for reassessment:**
 - **The project evolving from case study to real product:** LangChain and LlamaIndex are market standards with broad adoption, mature ecosystems, and active maintenance. In a product that needs delivery speed, reduced boilerplate, and community support, the absence of a framework becomes a liability. In that scenario, LlamaIndex for the data layer (ingestion + retrieval) and LangChain for orchestration are the recommended choices — not using frameworks in production requires solid technical justification, not just preference
 - LlamaIndex releasing native support for Chroma Cloud schema with Splade, making the integration trivial without losing control over retrieval
+
+---
+
+## Exception — `langchain-google-genai` in the evaluation path
+
+`langchain-google-genai` is listed as an optional dependency under the `eval` extras group (`pyproject.toml`). This does not contradict the decision above.
+
+**Why it exists:** RAGAS (the evaluation framework) requires a LangChain-compatible LLM wrapper to call the models it uses internally to score `faithfulness`, `answer_relevancy`, and `context_precision`. `langchain-google-genai` satisfies that interface for Google Gemini.
+
+**Why it is not a violation:** ADR-003 rejects LangChain as an *orchestration layer* — connecting Classifier → DB Search → LLM Gateway with chains, agents, or memory abstractions. The eval path is entirely separate from the serving path. `langchain-google-genai` never touches a request; it only wraps an LLM call inside `_run_ragas()`, which runs in a background thread after the response has already been returned.
+
+**The alternative considered:** Implementing `BaseRagasLLM` and `BaseRagasEmbeddings` using `litellm` directly would eliminate the LangChain dependency completely. The approach was rejected for this POC — the boilerplate cost (~50 lines of adapter code) is not justified given that the eval path is invisible to the serving architecture and `langchain-google-genai` is isolated to the optional `eval` group. If this project evolves to a production service, that adapter is the right escalation path.

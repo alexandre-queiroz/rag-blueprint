@@ -15,10 +15,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from dataclasses import replace
+
 from rag.cache.semantic_cache import SemanticCache, get_redis_client
 from rag.circuit_breaker.breaker import CircuitBreakerRegistry
 from rag.config import load_config
 from rag.gateway.gateway import LLMGateway
+from rag.monitoring.monitor import RAGASMonitor
 from rag.serve.pipeline import RAGPipeline
 from rag.vector_db.client import get_client, get_collection
 
@@ -35,19 +38,20 @@ async def main(query: str) -> None:
     circuit_breakers = CircuitBreakerRegistry(config.circuit_breaker)
     gateway = LLMGateway(config.llm_gateway, config.token_budget, circuit_breakers)
 
+    # Force sample_rate=1.0 in the CLI so every query is evaluated and sent to
+    # Axiom — the config's 10% rate is intended for high-volume production traffic.
+    monitor = RAGASMonitor(replace(config.evaluation, sample_rate=1.0))
+
     pipeline = RAGPipeline(
         config=config,
         cache=cache,
         collection=collection,
         gateway=gateway,
+        monitor=monitor,
     )
 
     print(f"\n Query: {query}\n")
     response = await pipeline.query(query)
-
-    # Give fire-and-forget tasks (cache write, monitor) a chance to complete
-    # before the event loop closes. Not needed in long-lived servers (uvicorn).
-    await asyncio.sleep(1.5)
 
     print(f" Answer:\n{response.answer}\n")
     if response.cached:
@@ -58,6 +62,14 @@ async def main(query: str) -> None:
         if response.record:
             rec = response.record
             print(f" Model: {rec.model}  |  tokens: {rec.total_tokens}  |  ${rec.cost_usd:.5f}  |  {rec.latency_ms:.0f}ms")
+
+    # Drain all background tasks (cache write, RAGAS monitor) before the event
+    # loop closes. In long-lived servers (uvicorn) this is not needed — the loop
+    # stays alive and tasks complete naturally. In a CLI the loop exits with
+    # asyncio.run(), killing any pending tasks mid-flight.
+    pending = [t for t in pipeline.background_tasks if not t.done()]
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
 
     await redis.aclose()
 
