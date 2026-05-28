@@ -158,6 +158,11 @@ class TestFormatAxiomEvent:
         event = _format_axiom_event({}, "What is RAG?", _make_response(), 0.75)
         assert event["query"] == "What is RAG?"
 
+    def test_answer_included(self) -> None:
+        response = _make_response(answer="RAG stands for Retrieval-Augmented Generation.")
+        event = _format_axiom_event({}, "q", response, 0.75)
+        assert event["answer"] == "RAG stands for Retrieval-Augmented Generation."
+
     def test_complexity_included(self) -> None:
         event = _format_axiom_event({}, "q", _make_response(complexity="complex"), 0.75)
         assert event["complexity"] == "complex"

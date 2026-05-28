@@ -208,6 +208,7 @@ Every non-trivial decision has an ADR in [`docs/adrs/`](docs/adrs/). Read them b
 | [ADR-008](docs/adrs/adr-008-evaluation.md) | Evaluation Framework — RAGAS |
 | [ADR-009](docs/adrs/adr-009-token-budget.md) | Token Budget — Per Request |
 | [ADR-010](docs/adrs/adr-010-observability-axiom.md) | Observability and Monitoring — Axiom |
+| [ADR-011](docs/adrs/adr-011-lgpd-observability.md) | Data Governance — Query and Answer Content in Axiom Spans |
 
 ## Running Evaluations
 
@@ -228,19 +229,20 @@ Each sampled request produces one `ragas.evaluation` span in Axiom with quality 
   "service": { "name": "rag-production" },
   "attributes": {
     "custom": {
-      "rag.query": "What are the consequences of opening the circuit breaker?",
-      "rag.complexity": "simple",
+      "rag.query": "What chunking strategy does this system use and why?",
+      "rag.answer": "The system uses either a fixed-size or hierarchical chunking strategy...",
+      "rag.complexity": "medium",
       "rag.cached": false,
-      "rag.faithfulness": 1.0,
-      "rag.answer_relevancy": 0.796,
-      "rag.context_precision": 0.95,
+      "rag.faithfulness": 0.917,
+      "rag.answer_relevancy": 0.857,
+      "rag.context_precision": 0.9999,
       "rag.alert": false,
       "rag.below_threshold": "",
-      "rag.model": "gemini/gemini-2.5-flash-lite",
+      "rag.model": "gemini/gemini-2.5-flash",
       "rag.provider": "google",
-      "rag.total_tokens": 2079,
-      "rag.cost_usd": 0.0002157,
-      "rag.latency_ms": 822.17
+      "rag.total_tokens": 1884,
+      "rag.cost_usd": 0.0024748,
+      "rag.latency_ms": 4312.03
     }
   }
 }

@@ -107,6 +107,7 @@ def _format_axiom_event(
     event: dict[str, object] = {
         "_time": datetime.now(tz=timezone.utc).isoformat(),
         "query": query,
+        "answer": response.answer,
         "complexity": response.complexity,
         "cached": response.cached,
         "below_threshold": failing,
