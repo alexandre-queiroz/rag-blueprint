@@ -59,7 +59,7 @@ rag-production/
 ├── src/rag/
 │   ├── ingestion/         # Chunking strategies + Chroma Cloud indexing
 │   ├── classifier/        # Three-stage complexity classification pipeline
-│   ├── cache/             # Semantic cache (Redis + gemini/text-embedding-004)
+│   ├── cache/             # Semantic cache (Redis + gemini-embedding-001)
 │   ├── gateway/           # LLM Gateway — model selection, fallback, token accounting
 │   ├── circuit_breaker/   # Per-provider circuit breaker (pybreaker)
 │   ├── monitoring/        # Async RAGAS sampling on live traffic

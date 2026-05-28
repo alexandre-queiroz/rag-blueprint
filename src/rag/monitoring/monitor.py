@@ -12,7 +12,7 @@ class RAGASMonitor:
     """Async RAGAS quality monitor with Axiom event emission.
 
     Samples live traffic at the configured rate, evaluates with RAGAS
-    (faithfulness, answer_relevancy, context_precision), and emits
+    (faithfulness, answer_relevancy, llm_context_precision_without_reference), and emits
     structured events to Axiom. Always runs fire-and-forget — never
     blocks the serving path.
 
