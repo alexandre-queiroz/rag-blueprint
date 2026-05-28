@@ -80,7 +80,6 @@ def _build_ragas_dataset(
         "user_input": [query],
         "response": [response.answer],
         "retrieved_contexts": [[chunk.document for chunk in chunks]],
-        "reference": [response.answer],  # Proxy reference for reference-dependent metrics like context_precision
     }
 
 
@@ -160,8 +159,8 @@ def _run_ragas(
     from ragas.embeddings import LangchainEmbeddingsWrapper  # type: ignore[import-untyped]
     from ragas.llms import LangchainLLMWrapper  # type: ignore[import-untyped]
     from ragas.metrics import (  # type: ignore[import-untyped]
+        LLMContextPrecisionWithoutReference,
         answer_relevancy,
-        context_precision,
         faithfulness,
     )
 
@@ -184,9 +183,10 @@ def _run_ragas(
     )
 
     dataset = Dataset.from_dict(_build_ragas_dataset(query, response, chunks))
+    context_precision_no_ref = LLMContextPrecisionWithoutReference()
     result = evaluate(
         dataset=dataset,
-        metrics=[faithfulness, answer_relevancy, context_precision],
+        metrics=[faithfulness, answer_relevancy, context_precision_no_ref],
         llm=ragas_llm,
         embeddings=ragas_embeddings,
     )
@@ -194,7 +194,7 @@ def _run_ragas(
     return {
         k: float(v)  # type: ignore[arg-type]
         for k, v in row.items()
-        if k in {"faithfulness", "answer_relevancy", "context_precision"}
+        if k in {"faithfulness", "answer_relevancy", "llm_context_precision_without_reference"}
     }
 
 

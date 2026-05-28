@@ -102,6 +102,10 @@ class TestBuildRagasDataset:
         assert len(result["response"]) == 1  # type: ignore[arg-type]
         assert len(result["retrieved_contexts"]) == 1  # type: ignore[arg-type]
 
+    def test_no_reference_key(self) -> None:
+        result = _build_ragas_dataset("query", _make_response(), [_make_chunk()])
+        assert "reference" not in result
+
     def test_multiple_chunks_all_included(self) -> None:
         chunks = [_make_chunk("Context A."), _make_chunk("Context B.")]
         result = _build_ragas_dataset("query", _make_response(), chunks)
@@ -121,13 +125,13 @@ class TestBuildRagasDataset:
 
 class TestScoresBelowThreshold:
     def test_all_above_returns_empty(self) -> None:
-        scores = {"faithfulness": 0.9, "answer_relevancy": 0.85, "context_precision": 0.80}
+        scores = {"faithfulness": 0.9, "answer_relevancy": 0.85, "llm_context_precision_without_reference": 0.80}
         assert _scores_below_threshold(scores, 0.75) == []
 
     def test_all_below_returns_all_metrics(self) -> None:
-        scores = {"faithfulness": 0.5, "answer_relevancy": 0.6, "context_precision": 0.4}
+        scores = {"faithfulness": 0.5, "answer_relevancy": 0.6, "llm_context_precision_without_reference": 0.4}
         result = _scores_below_threshold(scores, 0.75)
-        assert set(result) == {"faithfulness", "answer_relevancy", "context_precision"}
+        assert set(result) == {"faithfulness", "answer_relevancy", "llm_context_precision_without_reference"}
 
     def test_exactly_at_threshold_not_failing(self) -> None:
         # threshold is exclusive: score == threshold → not below
