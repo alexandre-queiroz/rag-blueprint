@@ -229,20 +229,20 @@ Each sampled request produces one `ragas.evaluation` span in Axiom with quality 
   "service": { "name": "rag-production" },
   "attributes": {
     "custom": {
-      "rag.query": "What chunking strategy does this system use and why?",
-      "rag.answer": "The system uses either a fixed-size or hierarchical chunking strategy...",
-      "rag.complexity": "medium",
+      "rag.query": "What happens when the semantic cache returns a hit?",
+      "rag.answer": "When the semantic cache returns a hit, the cached response is returned immediately, skipping the LLM call.",
+      "rag.complexity": "simple",
       "rag.cached": false,
-      "rag.faithfulness": 0.917,
-      "rag.answer_relevancy": 0.857,
-      "rag.context_precision": 0.9999,
+      "rag.faithfulness": 1,
+      "rag.answer_relevancy": 0.923,
+      "rag.llm_context_precision_without_reference": 0.8055,
       "rag.alert": false,
       "rag.below_threshold": "",
-      "rag.model": "gemini/gemini-2.5-flash",
+      "rag.model": "gemini/gemini-2.5-flash-lite",
       "rag.provider": "google",
-      "rag.total_tokens": 1884,
-      "rag.cost_usd": 0.0024748,
-      "rag.latency_ms": 4312.03
+      "rag.total_tokens": 1306,
+      "rag.cost_usd": 0.0001369,
+      "rag.latency_ms": 1777.10
     }
   }
 }
