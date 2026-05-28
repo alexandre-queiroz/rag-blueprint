@@ -29,9 +29,9 @@ Full diagram and layer descriptions: [`docs/architecture.md`](docs/architecture.
 | Vector DB | Chroma Cloud — embeddings e hybrid search gerenciados server-side, transparentes para a aplicação |
 | Semantic cache | Redis Cloud + `gemini/gemini-embedding-001` (Google) |
 | Evaluation | RAGAS |
-| LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
-| LLM — medium | Claude Sonnet (primary) → GPT-4o-mini → Gemini 2.5 Flash (fallback) |
-| LLM — complex | Claude Sonnet (primary) → GPT-4o → Gemini 2.5 Flash (fallback) |
+| LLM — simple | Gemini 2.5 Flash Lite (primary) → Claude Haiku (fallback) |
+| LLM — medium | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
+| LLM — complex | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o (fallback) |
 | Classifier LLM | Gemini 2.5 Flash Lite |
 
 ## Configuration

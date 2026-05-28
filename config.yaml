@@ -6,58 +6,61 @@
 
 llm_gateway:
   # Primary and fallback selected by complexity — optimizes cost on both the happy path and fallback
-  # See ADR-006 for the routing rationale
+  # See ADR-006 for the routing rationale.
+  # Google is primary across all tiers: consistent with the classifier and semantic cache providers,
+  # and no additional API key required beyond GOOGLE_API_KEY. Anthropic and OpenAI are documented
+  # fallbacks — configure ANTHROPIC_API_KEY / OPENAI_API_KEY to activate them.
   primary:
     simple:
-      provider: anthropic
-      model: claude-3-5-haiku-20241022
-      api_key_env: ANTHROPIC_API_KEY
+      provider: google
+      model: gemini-2.5-flash-lite
+      api_key_env: GOOGLE_API_KEY
       timeout_ms: 15000
       max_retries: 2
     medium:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      api_key_env: ANTHROPIC_API_KEY
+      provider: google
+      model: gemini-2.5-flash
+      api_key_env: GOOGLE_API_KEY
       timeout_ms: 30000
       max_retries: 2
     complex:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      api_key_env: ANTHROPIC_API_KEY
+      provider: google
+      model: gemini-2.5-flash
+      api_key_env: GOOGLE_API_KEY
       timeout_ms: 30000
       max_retries: 2
 
   # Complexity-aware fallback — activated when the primary is unavailable
   fallback:
     simple:
-      - provider: google
-        model: gemini-2.5-flash-lite
-        api_key_env: GOOGLE_API_KEY
+      - provider: anthropic
+        model: claude-3-5-haiku-20241022
+        api_key_env: ANTHROPIC_API_KEY
         timeout_ms: 15000
         max_retries: 1
 
     medium:
+      - provider: anthropic
+        model: claude-sonnet-4-6
+        api_key_env: ANTHROPIC_API_KEY
+        timeout_ms: 30000
+        max_retries: 2
       - provider: openai
         model: gpt-4o-mini
         api_key_env: OPENAI_API_KEY
         timeout_ms: 15000
-        max_retries: 2
-      - provider: google
-        model: gemini-2.5-flash
-        api_key_env: GOOGLE_API_KEY
-        timeout_ms: 20000
         max_retries: 1
 
     complex:
+      - provider: anthropic
+        model: claude-sonnet-4-6
+        api_key_env: ANTHROPIC_API_KEY
+        timeout_ms: 30000
+        max_retries: 2
       - provider: openai
         model: gpt-4o
         api_key_env: OPENAI_API_KEY
         timeout_ms: 30000
-        max_retries: 2
-      - provider: google
-        model: gemini-2.5-flash
-        api_key_env: GOOGLE_API_KEY
-        timeout_ms: 20000
         max_retries: 1
 
 # Classifier runs before the gateway — separate budget and provider
@@ -93,7 +96,7 @@ vector_db:
   # Native hybrid search via RRF — no manual BM25 needed
   rrf_dense_weight: 2.0
   rrf_sparse_weight: 1.0
-  top_k: 10        # chunks returned by hybrid search
+  top_k: 5         # chunks returned by hybrid search — reduced from 10 after observing context_precision: 0.267 with top-k 10 on specific queries (RRF was pulling tangentially relevant ADR chunks)
 
 ingestion:
   strategy: hierarchical   # "hierarchical" (parent-child) or "fixed" (sliding window)

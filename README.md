@@ -32,9 +32,9 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 | Semantic cache | [Redis Cloud](https://redis.io/try-free) + Google `gemini-embedding-001` |
 | Observability + Monitoring | [Axiom](https://axiom.co) via OpenTelemetry |
 | Evaluation | RAGAS |
-| LLM — simple | Claude Haiku (primary) → Gemini 2.5 Flash Lite (fallback) |
-| LLM — medium | Claude Sonnet (primary) → GPT-4o-mini → Gemini 2.5 Flash (fallback) |
-| LLM — complex | Claude Sonnet (primary) → GPT-4o → Gemini 2.5 Flash (fallback) |
+| LLM — simple | Gemini 2.5 Flash Lite (primary) → Claude Haiku (fallback) |
+| LLM — medium | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o-mini (fallback) |
+| LLM — complex | Gemini 2.5 Flash (primary) → Claude Sonnet → GPT-4o (fallback) |
 | Classifier | Gemini 2.5 Flash Lite |
 
 ## Prerequisites
@@ -51,7 +51,7 @@ Built as a learning resource for engineers who want to understand how a RAG syst
 **1. Clone and install dependencies**
 
 ```bash
-git clone https://github.com/your-username/rag-production
+git clone https://github.com/alexandre-queiroz/rag-blueprint
 cd rag-production
 uv sync
 # or: pip install -e .
